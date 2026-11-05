@@ -1,0 +1,72 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-reli}
+      POSTGRES_USER: ${POSTGRES_USER:-reli}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-reli_local_only}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-reli} -d ${POSTGRES_DB:-reli}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      APP_NAME: ${APP_NAME:-ReliAI}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://reli:reli_local_only@db:5432/reli}
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
+      TOGETHER_MODEL: ${TOGETHER_MODEL:-Qwen/Qwen3.5-9B}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-20b}
+      DATASET_IMPORT_MAX_BYTES: ${DATASET_IMPORT_MAX_BYTES:-20971520}
+      DATASET_IMPORT_MAX_CASES: ${DATASET_IMPORT_MAX_CASES:-10000}
+      DATASET_IMPORT_BATCH_SIZE: ${DATASET_IMPORT_BATCH_SIZE:-500}
+      PROJECT_ALLOWED_HOSTS: ${PROJECT_ALLOWED_HOSTS:-}
+      PROJECT_ALLOWED_ENDPOINTS: ${PROJECT_ALLOWED_ENDPOINTS:-}
+      PROJECT_ALLOWED_LOCAL_DOCKER_ENDPOINTS: ${PROJECT_ALLOWED_LOCAL_DOCKER_ENDPOINTS:-http://knowledgeops-backend-1:8000/ask}
+      PROJECT_LOCAL_DOCKER_NETWORK_CIDR: ${PROJECT_LOCAL_DOCKER_NETWORK_CIDR:-172.18.0.0/16}
+      PROJECT_AUTH_ENV_VARS: ${PROJECT_AUTH_ENV_VARS:-}
+      PROJECT_AUTH_TOKENS_JSON: ${PROJECT_AUTH_TOKENS_JSON:-}
+      PROJECT_HTTP_TIMEOUT_SECONDS: ${PROJECT_HTTP_TIMEOUT_SECONDS:-20}
+      PROJECT_MAX_CONCURRENCY: ${PROJECT_MAX_CONCURRENCY:-8}
+      PROJECT_REQUESTS_PER_SECOND: ${PROJECT_REQUESTS_PER_SECOND:-5}
+      PROJECT_MAX_RETRIES: ${PROJECT_MAX_RETRIES:-1}
+    ports:
+      - "8002:8000"
+    networks:
+      - default
+      - knowledgeops
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8002}
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+
+networks:
+  knowledgeops:
+    name: ${KNOWLEDGEOPS_DOCKER_NETWORK:-knowledgeops_default}
+    external: true
